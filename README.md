@@ -301,7 +301,7 @@ Tested with RAK7200 3.1.0.13
 * What are all the columns (and the star) in Channel list?
 * Re-enable sending valid AT commands
 * Test on Linux
-* Text on Windows or WSL
+* Test on Windows or WSL
 
 * Add options
   * Enable/Disable GPS - at+set_config=device:gps:X
@@ -317,6 +317,5 @@ Tested with RAK7200 3.1.0.13
 
 ## Issues
 
-Trying to mask/unmask multiple channels seems intermittent, how long
-does it take?
-
+1. Trying to mask/unmask multiple channels seems intermittent, how long does it take?
+1. Both my devices go dead after a while, what's up with that?
