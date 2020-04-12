@@ -300,6 +300,8 @@ Tested with RAK7200 3.1.0.13
 
 * What are all the columns (and the star) in Channel list?
 * Re-enable sending valid AT commands
+* Test on Linux
+* Text on Windows or WSL
 
 * Add options
   * Enable/Disable GPS - at+set_config=device:gps:X
