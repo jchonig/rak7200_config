@@ -1,6 +1,6 @@
 # rak7200_config
 
-A tool to configure a [https://store.rakwireless.com/products/rak7200-lpwan-tracker|RAK7200]
+A tool to configure a [RAK7200](https://store.rakwireless.com/products/rak7200-lpwan-tracker).
 
 ## Introduction
 
@@ -277,4 +277,12 @@ OTAA Join Start...
 Tested on macOS Catalina with python 3 installed by homebrew.  Should
 work on Linux
 
+Requires [pyserial](https://pypi.org/project/pyserial/)
+
+```bash
+pip install pyserial
+```
+
 Tested with RAK7200 3.1.0.13
+
+
