@@ -1,0 +1,696 @@
+#!/usr/bin/env python
+
+"""
+Configure RAK7200
+
+XXX - Wait if sleeping?
+
+XXX - More config
+	Enable/Disable GPS
+	Configure GPS timeout
+	Configure GPS Format
+	Configure GPS 
+	Enable/Disable Accelerometer
+	Enable/Disable Gyro
+	Enable/Disable Magnetometer
+	Enable/Disable Voltage
+	LoRa DR
+	LoRa ADR
+	LoRa send_interval
+"""
+
+from __future__ import print_function
+
+import argparse
+import logging
+import pprint
+import serial
+import yaml
+import select
+import sys
+import termios
+import time
+import tty
+
+def parse_args():
+    """ What are we to do """
+
+    def to_upper(string):
+        return string.upper()
+
+    def lora_eui(string):
+        try:
+            assert len(string) == 16
+            int(string, 16)
+        except (AssertionError, TypeError):
+            raise argparse.ArgumentTypeError("%s is not a valid EUI" % string)
+
+        return string.upper()
+            
+    def lora_key(string):
+        try:
+            assert len(string) == 32
+            int(string, 16)
+        except (AssertionError, TypeError):
+            raise argparse.ArgumentTypeError("%s is not a valid Key" % string)
+
+        return string.upper()
+            
+    parser = argparse.ArgumentParser(description="Configure a RAK7200")
+
+    #	Debugging
+    group = parser.add_argument_group("Debugging options")
+    group.add_argument("-d", "--debug",
+                       dest="debug", default=False,
+                       action='store_true',
+                       help="print debugging messages")
+    group.add_argument("--nodebug",
+                       dest="debug",
+                       action='store_false',
+                       help="print debugging messages")
+    group.add_argument("-v", "--verbose",
+                       dest="verbose", default=False,
+                       action='store_true',
+                       help="print verbose messages")
+
+    group = parser.add_argument_group("Options")
+    group.add_argument("--port",
+                       dest="port",
+                       required=True,
+                       help="Serial Port")
+    group.add_argument("--baudrate",
+                       dest="baudrate",
+                       type=int, default=115200,
+                       help="Baud rate")
+
+    # Mode
+    subparsers = parser.add_subparsers(help="commands")
+
+    # Note
+    sub_parser = subparsers.add_parser("config", help="Configure RAK7200")
+    sub_parser.set_defaults(func=config)
+    sub_parser.add_argument("--region",
+                            dest="lora_region", type=to_upper,
+                            choices=["US915", "EU868", "IN865", "AU915", "KR920", "AS923"],
+                            help="Specify LoRa region")
+    sub_parser.add_argument("--class",
+                            dest="lora_class", type=to_upper, choices=["A", "B", "C"],
+                            help="Specify LoRa class")
+    sub_parser.add_argument("--join_mode",
+                            dest="lora_join_mode", type=to_upper, choices=["OTAA", "ABP"],
+                            help="Specify LoRa join mode")
+    sub_parser.add_argument("--dev_eui",
+                            dest="lora_dev_eui", type=lora_eui,
+                            help="Specify Device EUI")
+    sub_parser.add_argument("--app_eui",
+                            dest="lora_app_eui", type=lora_eui,
+                            help="Specify App EUI")
+    sub_parser.add_argument("--app_key",
+                            dest="lora_app_key", type=lora_key,
+                            help="Specify App KEY")
+    sub_parser.add_argument("--unconfirm",
+                            dest="lora_confirm", action="store_false", default=None,
+                            help="Do not confirm messages")
+    sub_parser.add_argument("--confirm",
+                            dest="lora_confirm", action="store_true",
+                            help="Confirm messages")
+    sub_parser.add_argument("--mask",
+                            type=int, nargs="+",
+                            help="Mask the specified channels")
+    sub_parser.add_argument("--unmask",
+                            type=int, nargs="+",
+                            help="Mask the specified channels")
+    sub_parser.add_argument("--join",
+                            action="store_true",
+                            help="Join after config")
+    sub_parser.add_argument("--restart",
+                            action="store_true",
+                            help="Restart after config")
+    
+    sub_parser = subparsers.add_parser("monitor", help="Monitor RAK7200")
+    sub_parser.set_defaults(func=monitor)
+
+    sub_parser = subparsers.add_parser("restart", help="Restart RAK7200")
+    sub_parser.set_defaults(func=restart)
+
+    sub_parser = subparsers.add_parser("join", help="Restart RAK7200")
+    sub_parser.set_defaults(func=join)
+
+    sub_parser = subparsers.add_parser("boot", help="Restart RAK7200")
+    sub_parser.set_defaults(func=boot)
+
+    sub_parser = subparsers.add_parser("show", help="Show RAK7200 config and status")
+    sub_parser.set_defaults(func=show)
+    sub_parser.add_argument("show",
+                            choices=["all-channels", "channels", "commands", "device", "lora", "version"],
+                            help="What to show")
+
+    options = parser.parse_args()
+
+    if options.debug:
+        options.verbose = options.debug
+
+    init_logging(options)
+
+    rak = RAK7200(options)
+
+    options.func(options, rak)
+    
+    return options
+		       		   	
+def init_logging(options):
+    """ Set up logging """
+
+    logger = logging.getLogger()
+    logger.handlers = []
+    logger.addHandler(logging.StreamHandler())
+    if options.debug:
+        logger.setLevel('DEBUG')
+    elif options.verbose:
+        logger.setLevel('INFO')
+    else:
+        logger.setLevel('WARNING')
+
+    return logger
+
+class RAK7200(object):
+    """ """
+
+    def __init__(self, options):
+        self._options = options
+        self._version = None
+        self._commands = {}
+        self._channels = {}
+        self._timeout = 1
+        self._send_buffer = []
+
+        self._lora_region = None
+        self._lora_send_interval = None
+        self._lora_mode = None
+        self._lora_join_mode = None
+        self._lora_dev_eui = None
+        self._lora_app_eui = None
+        self._lora_app_key = None
+        self._lora_class = None
+        self._lora_confirm = None
+
+    @property
+    def version(self):
+        if not self._version:
+            self._query_version()
+        return self._version
+
+    @property
+    def timeout(self):
+        return self._timeout
+    @timeout.setter
+    def timeout(self, timeout):
+        self._timeout = timeout
+
+    @property
+    def lora_region(self):
+        return self._lora_region
+    @lora_region.setter
+    def lora_region(self, lora_region):
+        self.execute("set_config=lora:region", lora_region)
+        logging.info("Set LoRa region to %s", lora_region)
+        self._lora_region = lora_region
+    
+    @property
+    def lora_class(self):
+        return self._lora_class
+    @lora_class.setter
+    def lora_class(self, lora_class):
+        self.execute("set_config=lora:class", ord(lora_class) - ord('A'))
+        logging.info("Set LoRa class to %s", lora_class)
+        self._lora_class = lora_class
+    
+    @property
+    def lora_join_mode(self):
+        return self._lora_join_mode
+    @lora_join_mode.setter
+    def lora_join_mode(self, lora_join_mode):
+        self.execute("set_config=lora:join_mode", 0 if lora_join_mode == "OTAA" else 1)
+        logging.info("Set LoRa join mode to %s", lora_join_mode)
+        self._lora_join_mode = lora_join_mode
+    
+    @property
+    def lora_confirm(self):
+        return self._lora_confirm
+    @lora_confirm.setter
+    def lora_confirm(self, lora_confirm):
+        self.execute("set_config=lora:confirm", 1 if lora_confirm else 0)
+        logging.info("Set LoRa confirm to %s", lora_confirm)
+        self._lora_confirm = lora_confirm
+    
+    @property
+    def lora_dev_eui(self):
+        return self._lora_dev_eui
+    @lora_dev_eui.setter
+    def lora_dev_eui(self, lora_dev_eui):
+        self.execute("set_config=lora:dev_eui", lora_dev_eui)
+        logging.info("Set LoRa device EUI to %s", lora_dev_eui)
+        self._lora_dev_eui = lora_dev_eui
+    
+    @property
+    def lora_app_eui(self):
+        return self._lora_app_eui
+    @lora_app_eui.setter
+    def lora_app_eui(self, lora_app_eui):
+        self.execute("set_config=lora:app_eui", lora_app_eui)
+        logging.info("Set LoRa application EUI to %s", lora_app_eui)
+        self._lora_app_eui = lora_app_eui
+    
+    @property
+    def lora_app_key(self):
+        return self._lora_app_key
+    @lora_app_key.setter
+    def lora_app_key(self, lora_app_key):
+        self.execute("set_config=lora:app_key", lora_app_key)
+        logging.info("Set LoRa application key to %s", lora_app_key)
+        self._lora_app_key = lora_app_key
+
+    def lora_mask_channel(self, channel, mask=True):
+        """ Mask or unmask a channel """
+
+        if not self._channels:
+            self._query_channels()
+
+        if channel not in self._channels:
+            sys.exit("Invalid channel {}".format(channel))
+
+        if (self._channels[channel][0] == "off") == mask:
+            return
+
+        logging.info("%s channel %d", "Masking" if mask else "Unmasking", channel)
+
+        self.log(self.execute("set_config=lora:ch_mask", channel, 0 if mask else 1))
+
+    def log(self, response):
+        """ Log the response """
+
+        print("\n".join(response))
+
+    def join(self):
+        """ Join """
+
+        self.log(self._execute("join"))
+
+    def status(self):
+        """ Query and display status """
+
+        self.log(self._execute("get_config=device:status"))
+        
+    def restart(self):
+        """ Restart """
+
+        self.log(self._execute("set_config=device:restart"))
+
+    def refresh(self):
+        """ Refresh status """
+
+        self._query_lora()
+        
+    def __str__(self):
+
+        response = []
+        if self._version:
+            response.append("Version: {}".format(self._version))
+        if self._lora_mode:
+            response.append("LoRa Mode: {}".format(self._lora_mode))
+        if self._lora_region:
+            response.append("LoRa Region: {}".format(self._lora_region))
+        if self._lora_join_mode:
+            response.append("LoRa Join mode: {}".format(self._lora_join_mode))
+        if self._lora_confirm is not None:
+            response.append("LoRa Confirm: {}".format(self._lora_confirm))
+        if self._lora_class:
+            response.append("LoRa Class: {}".format(self._lora_class))
+        if self._lora_send_interval:
+            response.append("LoRa Send interval: {}".format(self._lora_send_interval))
+        if self._lora_dev_eui:
+            response.append("LoRa DevEui: {}".format(self._lora_dev_eui))
+        if self._lora_app_eui:
+            response.append("LoRa AppEui: {}".format(self._lora_app_eui))
+        if self._lora_app_key:
+            response.append("LoRa AppKey: {}".format(self._lora_app_key))
+
+        return "\n".join(response)
+
+    def _query_channels(self):
+        """ Get the LoRa channels """
+
+        self._channels = {}
+        response = []
+        for i in range(10):
+            response = self.execute("get_config=lora:channel")
+            if response:
+                break
+            time.sleep(random.random(i))
+            
+        data = ''.join(response).strip()
+        channels = data.split("; ")
+        for channel in channels:
+            parts = channel.split(',')
+            star = False
+            try:
+                channel_no = parts.pop(0)
+                channel_no = int(channel_no)
+            except ValueError:
+                channel_no = int(channel_no[1:])
+                star = True
+            data = []
+            data.append(parts.pop(0))
+            freq = parts.pop(0)
+            freq = float(freq[0:3] + '.' + freq[3:])
+            if freq == 0:
+                sys.exit("Channels are still initializing")
+            data.append(freq)
+            data.extend(parts)
+            data.append(star)
+            self._channels[channel_no] = tuple(data)
+
+    def _query_lora(self):
+        """ Get the LoRa parameters """
+
+        response = self.execute("get_config=lora:status")
+        for line in response:
+            line = line.strip()
+            parts = line.split(": ")
+            for part in parts:
+                if part == "Work Mode":
+                    self._lora_mode = parts[1]
+                if part == "Region":
+                    self._lora_region = parts[1]
+                elif part == "Send_interval":
+                    self._lora_send_interval = int(parts[1][:-1])
+                elif part == "Join_mode":
+                    self._lora_join_mode = parts[1]
+                elif part == "DevEui":
+                    self._lora_dev_eui = parts[1]
+                elif part == "AppEui":
+                    self._lora_app_eui = parts[1]
+                elif part == "AppKey":
+                    self._lora_app_key = parts[1]
+                elif part == "Class":
+                    self._lora_class = parts[1]
+                elif part == "IsConfirm":
+                    self._lora_confirm = parts[1] not in ["false", "unconfirm"]
+
+    def _query_version(self):
+        """ Get the version """
+
+        response = self.execute("version")
+        self._version = response[0]
+
+    def _query_commands(self):
+        """ Get a list of supported commands """
+
+        commands = {}
+
+        response = self.execute("help")
+        for line in response:
+            if not line.startswith("at+"):
+                continue
+            command = []
+            n_args = 0
+            parts = line.split(':')
+            for part in parts:
+                if part.startswith("X") or part.startswith("Y"):
+                    n_args += 1
+                else:
+                    command.append(part)
+            cmd = ":".join(command)
+            cmd = cmd[3:]
+            commands[cmd] = n_args
+
+        self._commands = commands
+
+    def set_send_interval(self, send_interval):
+        """ Set send interval """
+
+        self.execute("set_config=lora:send_interval",
+                     1 if send_interval else 0,
+                     send_interval if send_interval else 0)
+
+    def _execute(self, command):
+        """ """
+
+        status = None
+        response = []
+
+        try:
+            with serial.Serial(self._options.port, self._options.baudrate, timeout=1) as ser:
+                if command:
+                    logging.debug("WRITE: at+%s", command)
+                    ser.write(b'at+' + command.encode() + b'\r')
+                while True:
+                    raw = ser.readline()
+                    if raw == b'':
+                        break
+                    line = raw.decode().strip()
+                    logging.debug("READ: %s", line)
+                    if not status:
+                        if line.startswith("LoRaWAN Ack"):
+                            pass
+                        elif line.startswith("OK"):
+                            status = "OK"
+                            line = line[2:]
+                            if not line:
+                                continue
+                        else:
+                            sys.exit("{}: {}".format(command, line))
+                    response.append(line)
+
+        except serial.serialutil.SerialException as error:
+            sys.exit(error.strerror)
+
+        return response
+
+    _MONITOR_MAP = {
+        'C': ('List channels', 'get_config=lora:channel'),
+        'H': ('List commands', 'help'),
+        'J': ('Join', 'join'),
+        'L': ('LoRa Status', 'get_config=lora:status'),
+        'R': ('Restart Device', 'set_config=device:restart'),
+        'S': ('Device Status', 'get_config=device:status'),
+        'V': ('Device Version', 'version'),
+    }
+
+    def _keypress(self, key):
+        """ Check what the keypress was """
+
+        if key == "?":
+            print("Commands:")
+            for key, data in sorted(self._MONITOR_MAP.items()):
+                print("{}\t{}".format(key, data[0]))
+            return
+
+        if key not in self._MONITOR_MAP:
+            logging.warning("Unknown key: '%s'", key)
+            return
+
+        desc, command = self._MONITOR_MAP[key]
+        print("{}: {}".format(desc, command))
+        self._send_buffer.append(command)
+
+    def monitor(self):
+        """ Monitor output forever """
+
+        help = ["Commands"]
+
+        tty.setcbreak(sys.stdin.fileno())
+
+        try:
+            with serial.Serial(self._options.port, self._options.baudrate, timeout=1) as ser:
+                while True:
+                    raw = ser.readline()
+                    if raw == b'':
+                        if select.select([sys.stdin,],[],[],0.0)[0]:
+                            char = sys.stdin.read(1)
+                            logging.debug("Keypress: '%s'", char)
+                            self._keypress(char)
+                            continue
+                        if self._send_buffer:
+                            command = 'at+' + self._send_buffer.pop(0)
+                            logging.info("SEND: %s", command)
+                            ser.write(command.encode() + b'\r')
+                        continue
+                    line = raw.decode().rstrip()
+                    if self._options.verbose:
+                        print("{} {}".format(time.strftime("%H:%M:%S"), line))
+                    else:
+                        print(line)
+        except serial.serialutil.SerialException as error:
+            sys.exit(error.strerror)
+        
+    def execute(self, command, arg1=None, arg2=None):
+        """ Open the serial port, send the command and return the output """
+
+        cmd = command
+        if arg1 is not None:
+            cmd += ":" + str(arg1)
+            if arg2 is not None:
+                cmd += ":" + str(arg2)
+        
+        return self._execute(cmd)
+
+    def command(self, command):
+        """ Run a CLI command """
+
+        if not self._commands:
+            self._query_commands()
+
+        parts = command.split(':')
+        cmd = parts.pop(0)
+        if parts:
+            cmd += ':' + parts.pop(0)
+
+        try:
+            n_args = self._commands[cmd]
+        except KeyError:
+            sys.exit("{} is not a valid command".format(command))
+
+        if n_args != len(parts):
+            sys.exit("{} expects {} arguments".format(command, n_args))
+
+        self.log(self._execute(command))
+
+    def channels(self, all=False):
+        """ Print the channels """
+
+        if not self._channels:
+            self._query_channels()
+
+        print("{}\t{}\t{}\t{}\t{}\t{}".format("Channel",
+                                          "State",
+                                          "Frequency",
+                                          "??",
+                                          "??",
+                                          "Star?"))
+        for channel, data in sorted(self._channels.items()):
+            if not all and data[0] == "off":
+                continue
+            print("{}\t{}\t{} MHz\t{}\t{}\t{}".format(channel,
+                                                      data[0],
+                                                      data[1],
+                                                      data[2],
+                                                      data[3],
+                                                      data[4]))
+
+def monitor(options, rak):
+    """ Go into monitor mode """
+
+    old_settings = termios.tcgetattr(sys.stdin)
+    try:
+        rak.monitor()
+    finally:
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+def config(options, rak):
+    """ Configure the device """
+
+
+    need_join = False
+
+    rak.refresh()
+    
+    if options.lora_region and rak.lora_region != options.lora_region:
+        rak.lora_region = options.lora_region
+        need_join = True
+
+    if options.lora_class and rak.lora_class != options.lora_class:
+        rak.lora_class = options.lora_class
+        need_join = True
+
+    if options.lora_join_mode and rak.lora_join_mode != options.lora_join_mode:
+        rak.lora_join_mode = options.lora_join_mode
+        need_join = True
+
+    if options.lora_dev_eui and rak.lora_dev_eui != options.lora_dev_eui:
+        rak.lora_dev_eui = options.lora_dev_eui
+        need_join = True
+
+    if options.lora_app_eui and rak.lora_app_eui != options.lora_app_eui:
+        rak.lora_app_eui = options.lora_app_eui
+        need_join = True
+
+    if options.lora_app_key and rak.lora_app_key != options.lora_app_key:
+        rak.lora_app_key = options.lora_app_key
+        need_join = True
+
+    if options.lora_confirm is not None and rak.lora_confirm != options.lora_confirm:
+        rak.lora_confirm = options.lora_confirm        
+        need_join = True
+
+    if options.mask:
+        for channel in options.mask:
+            rak.lora_mask_channel(channel, True)
+            time.sleep(2)
+    if options.unmask:
+        for channel in options.unmask:
+            rak.lora_mask_channel(channel, False)
+            time.sleep(2)
+
+    if options.restart:
+        rak.restart()
+    if options.join or need_join:
+        rak.join()
+
+def restart(options, rak):
+    """ Restart Device """
+
+    rak.restart()
+
+def join(options, rak):
+    """ Ask device to join """
+
+    rak.join()
+
+def boot(options, rak):
+    """ Put device in boot mode """
+
+    rak.log(rak.execute("help"))
+
+def show(options, rak):
+    """ Show device info """
+
+    if options.show == "version":
+        print(rak.version)
+
+    if options.show in ["all-channels", "channels"]:
+        rak._query_channels()
+        rak.channels(options.show == "all-channels")
+        return
+
+    if options.show == "commands":
+        rak.log(rak.execute("help"))
+        return
+
+    if options.show == "lora":
+        rak.log(rak.execute('get_config=lora:status'))
+        return
+
+    if options.show == "device":
+        rak.log(rak.execute('get_config=device:status'))
+        return
+
+def main():
+    """It all happens here"""
+
+    parse_args()
+
+    return
+
+    for command in options.commands:
+        logging.info("Executing command: AT+%s", command)
+        rak.command(command)
+
+if __name__ == "__main__":
+    try:
+        main()
+        sys.exit(0)
+    except KeyboardInterrupt:
+        print()
+        sys.exit(1)
+
