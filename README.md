@@ -237,6 +237,7 @@ L       LoRa Status
 R       Restart Device
 S       Device Status
 V       Device Version
+Q,^C    Quit monitor mode
 ?       Display this message
 ```
 

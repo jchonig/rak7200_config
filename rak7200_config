@@ -484,7 +484,12 @@ class RAK7200(object):
             print("Commands:")
             for key, data in sorted(self._MONITOR_MAP.items()):
                 print("{}\t{}".format(key, data[0]))
+            print("Q,^C\tQuit monitor mode")
+            print("?\tDisplay this message")
             return
+
+        if key == "Q":
+            sys.exit(0)
 
         if key not in self._MONITOR_MAP:
             logging.warning("Unknown key: '%s'", key)
