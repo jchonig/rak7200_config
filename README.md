@@ -298,6 +298,8 @@ Tested with RAK7200 3.1.0.13
 
 ## TODO
 
+* Add standard format for enable/disable yes/no true/false
+  * `confirm [yes|no|true|false|enable|disable]`
 * What are all the columns (and the star) in Channel list?
 * Re-enable sending valid AT commands
 * Test on Linux
