@@ -272,6 +272,17 @@ OTAA Join Start...
 [LoRa]:Joined Successed!
 ```
 
+## Finding the serial port
+
+### macOS
+
+```bash
+$ ls /dev/tty.usbserial*
+/dev/tty.usbserial-1420
+```
+
+The last four digits will change.
+
 ## Environment
 
 Tested on macOS Catalina with python 3 installed by homebrew.  Should
