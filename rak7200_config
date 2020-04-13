@@ -659,21 +659,20 @@ class RAK7200(object):
         if not self._channels:
             self._query_channels()
 
-        print("{}\t{}\t{}\t{}\t{}\t{}".format("Channel",
-                                          "State",
+        print("{}\t{}\t{}\t{}\t{}".format("Channel",
+                                          "Enabled",
+                                          "Open",
                                           "Frequency",
-                                          "??",
-                                          "??",
-                                          "Star?"))
+                                          "DR"))
         for channel, data in sorted(self._channels.items()):
             if not all and data[0] == "off":
                 continue
-            print("{}\t{}\t{} MHz\t{}\t{}\t{}".format(channel,
-                                                      data[0],
-                                                      data[1],
-                                                      data[2],
-                                                      data[3],
-                                                      data[4]))
+            print("{}\t{}\t{}\t{} MHz\t{}-{}".format(channel,
+                                                     data[0],
+                                                     data[4],
+                                                     data[1],
+                                                     data[2],
+                                                     data[3]))
 
 def monitor(options, rak):
     """ Go into monitor mode """
