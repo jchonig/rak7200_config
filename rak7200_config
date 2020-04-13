@@ -13,9 +13,10 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 implied.  See the License for the specific language governing
 permissions and limitations under the License.
-w
 
 Configure RAK7200
+
+XXX - Parse device status
 
 XXX - Wait if sleeping?
 
@@ -24,12 +25,7 @@ XXX - More config
 	Configure GPS timeout
 	Configure GPS Format
 	Configure GPS 
-	Enable/Disable Accelerometer
-	Enable/Disable Gyro
-	Enable/Disable Magnetometer
-	Enable/Disable Voltage
 	LoRa DR
-	LoRa ADR
 	LoRa send_interval
 
 """
@@ -70,6 +66,16 @@ def parse_args():
             raise argparse.ArgumentTypeError("%s is not a valid Key" % string)
 
         return string.upper()
+
+    def true_false(string):
+        lstring = string.lower()
+        if lstring in ["yes", "on", "true", "enable", "enabled"]:
+            return True
+
+        if lstring in ["no", "off", "false", "disable", "disabled"]:
+            return False
+
+        raise argparse.ArgumentTypeError("%s is valid for true/false" % string)
             
     parser = argparse.ArgumentParser(description="Configure a RAK7200")
 
@@ -123,24 +129,38 @@ def parse_args():
     sub_parser.add_argument("--app_key",
                             dest="lora_app_key", type=lora_key,
                             help="Specify App KEY")
-    sub_parser.add_argument("--unconfirm",
-                            dest="lora_confirm", action="store_false", default=None,
-                            help="Do not confirm messages")
+    sub_parser.add_argument("--adr",
+                            dest="lora_adr", type=true_false,
+                            help="Enable or disable ADR (automatic data rate)")
     sub_parser.add_argument("--confirm",
-                            dest="lora_confirm", action="store_true",
-                            help="Confirm messages")
+                            dest="lora_confirm", type=true_false,
+                            help="Enable or disable confirmation of messages")
     sub_parser.add_argument("--mask",
                             type=int, nargs="+",
                             help="Mask the specified channels")
     sub_parser.add_argument("--unmask",
                             type=int, nargs="+",
                             help="Mask the specified channels")
-    sub_parser.add_argument("--join",
-                            action="store_true",
-                            help="Join after config")
+
+    sub_parser.add_argument("--gyro",
+                            dest="sensor_gyro", type=true_false,
+                            help="Enable or disable Gyro")
+    sub_parser.add_argument("--voltage",
+                            dest="sensor_voltage", type=true_false,
+                            help="Enable or disable Voltage")
+    sub_parser.add_argument("--accelerometer", "--accel", "--acc",
+                            dest="sensor_accelerometer", type=true_false,
+                            help="Enable or disable Accelerometer")
+    sub_parser.add_argument("--magnetometer", "--magnet", "--mag", "--magn",
+                            dest="sensor_magnetometer", type=true_false,
+                            help="Enable or disable Magnetometer")
+
     sub_parser.add_argument("--restart",
                             action="store_true",
                             help="Restart after config")
+    sub_parser.add_argument("--join",
+                            action="store_true",
+                            help="Issue a join after config")
     
     sub_parser = subparsers.add_parser("monitor", help="Monitor RAK7200")
     sub_parser.set_defaults(func=monitor)
@@ -199,6 +219,12 @@ class RAK7200(object):
         self._timeout = 1
         self._send_buffer = []
 
+        self._sensor_accelerometer = None
+        self._sensor_magnetometer = None
+        self._sensor_gyro = None
+        self._sensor_voltate = None
+        self._sensor_gps = None
+
         self._lora_region = None
         self._lora_send_interval = None
         self._lora_mode = None
@@ -250,6 +276,15 @@ class RAK7200(object):
         self._lora_join_mode = lora_join_mode
     
     @property
+    def lora_adr(self):
+        return self._lora_adr
+    @lora_adr.setter
+    def lora_adr(self, lora_adr):
+        self.execute("set_config=lora:adr", 1 if lora_adr else 0)
+        logging.info("Set LoRa adr to %s", lora_adr)
+        self._lora_adr = lora_adr
+
+    @property
     def lora_confirm(self):
         return self._lora_confirm
     @lora_confirm.setter
@@ -284,6 +319,42 @@ class RAK7200(object):
         self.execute("set_config=lora:app_key", lora_app_key)
         logging.info("Set LoRa application key to %s", lora_app_key)
         self._lora_app_key = lora_app_key
+
+    @property
+    def sensor_accelerometer(self):
+        return self._sensor_accelerometer
+    @sensor_accelerometer.setter
+    def sensor_accelerometer(self, sensor_accelerometer):
+        self.execute("set_config=device:acc", 1 if sensor_accelerometer else 0)
+        logging.info("Set accelerometer to %s", sensor_accelerometer)
+        self._sensor_accelerometer = sensor_accelerometer
+
+    @property
+    def sensor_gyro(self):
+        return self._sensor_gyro
+    @sensor_gyro.setter
+    def sensor_gyro(self, sensor_gyro):
+        self.execute("set_config=device:gyro", 1 if sensor_gyro else 0)
+        logging.info("Set Gyro to %s", sensor_gyro)
+        self._sensor_gyro = sensor_gyro
+
+    @property
+    def sensor_voltage(self):
+        return self._sensor_voltage
+    @sensor_voltage.setter
+    def sensor_voltage(self, sensor_voltage):
+        self.execute("set_config=device:voltage", 1 if sensor_voltage else 0)
+        logging.info("Set Voltage to %s", sensor_voltage)
+        self._sensor_voltage = sensor_voltage
+
+    @property
+    def sensor_magnetometer(self):
+        return self._sensor_magnetometer
+    @sensor_magnetometer.setter
+    def sensor_magnetometer(self, sensor_magnetometer):
+        self.execute("set_config=device:magn", 1 if sensor_magnetometer else 0)
+        logging.info("Set magnetometer to %s", sensor_magnetometer)
+        self._sensor_magnetometer = sensor_magnetometer
 
     def lora_mask_channel(self, channel, mask=True):
         """ Mask or unmask a channel """
@@ -337,6 +408,8 @@ class RAK7200(object):
             response.append("LoRa Region: {}".format(self._lora_region))
         if self._lora_join_mode:
             response.append("LoRa Join mode: {}".format(self._lora_join_mode))
+        if self._lora_adr is not None:
+            response.append("LoRa ADR: {}".format(self._lora_adr))
         if self._lora_confirm is not None:
             response.append("LoRa Confirm: {}".format(self._lora_confirm))
         if self._lora_class:
@@ -411,6 +484,8 @@ class RAK7200(object):
                     self._lora_class = parts[1]
                 elif part == "IsConfirm":
                     self._lora_confirm = parts[1] not in ["false", "unconfirm"]
+                elif part == "AdrEnable":
+                    self._lora_adr = parts[1] not in ["false", "unconfirm"]
 
     def _query_version(self):
         """ Get the version """
@@ -468,13 +543,15 @@ class RAK7200(object):
                     if not status:
                         if line.startswith("LoRaWAN Ack"):
                             pass
+                        if line.startswith("open ") or line.startswith("close ") or line.startswith("join "):
+                            pass
                         elif line.startswith("OK"):
                             status = "OK"
                             line = line[2:]
                             if not line:
                                 continue
                         else:
-                            sys.exit("{}: {}".format(command, line))
+                            sys.exit("ERROR {}: {}".format(command, line))
                     response.append(line)
 
         except serial.serialutil.SerialException as error:
@@ -610,38 +687,43 @@ def monitor(options, rak):
 def config(options, rak):
     """ Configure the device """
 
-
-    need_join = False
-
     rak.refresh()
     
     if options.lora_region and rak.lora_region != options.lora_region:
         rak.lora_region = options.lora_region
-        need_join = True
 
     if options.lora_class and rak.lora_class != options.lora_class:
         rak.lora_class = options.lora_class
-        need_join = True
 
     if options.lora_join_mode and rak.lora_join_mode != options.lora_join_mode:
         rak.lora_join_mode = options.lora_join_mode
-        need_join = True
 
     if options.lora_dev_eui and rak.lora_dev_eui != options.lora_dev_eui:
         rak.lora_dev_eui = options.lora_dev_eui
-        need_join = True
 
     if options.lora_app_eui and rak.lora_app_eui != options.lora_app_eui:
         rak.lora_app_eui = options.lora_app_eui
-        need_join = True
 
     if options.lora_app_key and rak.lora_app_key != options.lora_app_key:
         rak.lora_app_key = options.lora_app_key
-        need_join = True
 
     if options.lora_confirm is not None and rak.lora_confirm != options.lora_confirm:
         rak.lora_confirm = options.lora_confirm        
-        need_join = True
+
+    if options.lora_adr is not None and rak.lora_adr != options.lora_adr:
+        rak.lora_adr = options.lora_adr
+
+    if options.sensor_accelerometer is not None:
+        rak.sensor_accelerometer = options.sensor_accelerometer
+
+    if options.sensor_gyro is not None:
+        rak.sensor_gyro = options.sensor_gyro
+
+    if options.sensor_voltage is not None:
+        rak.sensor_voltage = options.sensor_voltage
+
+    if options.sensor_magnetometer is not None:
+        rak.sensor_magnetometer = options.sensor_magnetometer
 
     if options.mask:
         for channel in options.mask:
@@ -654,7 +736,8 @@ def config(options, rak):
 
     if options.restart:
         rak.restart()
-    if options.join or need_join:
+
+    if options.join:
         rak.join()
 
 def restart(options, rak):

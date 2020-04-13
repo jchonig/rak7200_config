@@ -309,12 +309,7 @@ Tested with RAK7200 3.1.0.13
   * Enable/Disable GPS - at+set_config=device:gps:X
   * Configure GPS timeout - at+set_config=device:gps_timeout:X
   * Configure GPS Format - at+set_config=device:gps_format:X
-  * Enable/Disable Accelerometer - at+set_config=device:acc:X
-  * Enable/Disable Gyro - at+set_config=device:gyro:X
-  * Enable/Disable Magnetometer - at+set_config=device:magn:X
-  * Enable/Disable Voltage	- at+set_config=device:voltage:X
   * configure LoRa DR - at+set_config=lora:dr:X
-  * configure LoRa ADR - at+set_config=lora:adr:X
   * configure LoRa send_interval - at+set_config=lora:send_interval:X:Y
 
 ## Issues
