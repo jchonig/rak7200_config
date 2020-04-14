@@ -14,6 +14,7 @@ A tool to configure a [RAK7200](https://store.rakwireless.com/products/rak7200-l
 * [License](#license)
 
 <a name="introduction" />
+
 ## Introduction
 
 The RAK7200 is a LoRA GPS tracker with an AT command set.  This tool
@@ -21,6 +22,7 @@ can configure the device from the command line as well as monitor the
 console.
 
 <a name="invocation" />
+
 ## Invocation
 
 ```
