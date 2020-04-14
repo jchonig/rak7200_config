@@ -272,9 +272,23 @@ OTAA Join Start...
 [LoRa]:Joined Successed!
 ```
 
-## Finding the serial port
+## OS support
 
 ### macOS
+
+#### Testing environment
+
+On macOS testing has been performed with python3 installed by
+[homebrew](https://brew.sh/).  It is necessary to install `pyserial`
+as shown below.
+
+Requires [pyserial](https://pypi.org/project/pyserial/)
+
+```bash
+pip install pyserial
+```
+
+#### Finding the serial port
 
 ```bash
 $ ls /dev/tty.usbserial*
@@ -285,7 +299,11 @@ The last four digits will change.
 
 ### Windows Subsystem for Linux
 
+#### Testing environment
+
 On WSL Ubuntu 18.04 it was not necessary to install `pyserial`.
+
+#### Finding the serial port
 
 If you can find the serial port name under Windows (such as via the
 RAK SERIAL PORT TOOL), you can figure out the WSL device.  For example
@@ -293,18 +311,17 @@ RAK SERIAL PORT TOOL), you can figure out the WSL device.  For example
 
 ### Ubuntu 18.04
 
+NOT YET TESTED
+
+#### Testing environment
+
 It appears that `pyserial` is already installed.
 
-## Environment
+#### Finding the serial port
 
-Tested on macOS Catalina with python 3 installed by homebrew.  Should
-work on Linux
+TBD
 
-Requires [pyserial](https://pypi.org/project/pyserial/)
-
-```bash
-pip install pyserial
-```
+## Supported hardware
 
 Tested with RAK7200 3.1.0.13
 
