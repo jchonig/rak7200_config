@@ -283,6 +283,18 @@ $ ls /dev/tty.usbserial*
 
 The last four digits will change.
 
+### Windows Subsystem for Linux
+
+On WSL Ubuntu 18.04 it was not necessary to install `pyserial`.
+
+If you can find the serial port name under Windows (such as via the
+RAK SERIAL PORT TOOL), you can figure out the WSL device.  For example
+`COM4` on Windows would be `/dev/ttyS4` on WSL.
+
+### Ubuntu 18.04
+
+It appears that `pyserial` is already installed.
+
 ## Environment
 
 Tested on macOS Catalina with python 3 installed by homebrew.  Should
@@ -298,10 +310,9 @@ Tested with RAK7200 3.1.0.13
 
 ## TODO
 
-* What are all the columns (and the star) in Channel list?
 * Re-enable sending valid AT commands
 * Test on Linux
-* Test on Windows or WSL
+* Test on Windows
 
 * Add options
   * Enable/Disable GPS - at+set_config=device:gps:X
