@@ -2,12 +2,25 @@
 
 A tool to configure a [RAK7200](https://store.rakwireless.com/products/rak7200-lpwan-tracker).
 
+## Contents
+
+[Introduction](#introduction)
+[Invocation](#invocation)
+[Commands](#commands)
+[OS Support](#os_support)
+[Supported Hardware](#supported_hardware)
+[TODO](#todo)
+[Issues](#issues)
+[License](#license)
+
+<a name="introduction" />
 ## Introduction
 
 The RAK7200 is a LoRA GPS tracker with an AT command set.  This tool
 can configure the device from the command line as well as monitor the
 console.
 
+<a name="invocation" />
 ## Invocation
 
 ```
@@ -21,6 +34,7 @@ Where:
 * --baud sets a baud rate (defaults to 115200)
 * --port specifies the serial port (system specific)
 
+<a name="commands" />
 ## Commands
 
 ### show
@@ -272,6 +286,7 @@ OTAA Join Start...
 [LoRa]:Joined Successed!
 ```
 
+<a name="os_support" />
 ## OS support
 
 ### macOS
@@ -321,10 +336,12 @@ It appears that `pyserial` is already installed.
 
 TBD
 
+<a name="supported_hardware" />
 ## Supported hardware
 
 Tested with RAK7200 3.1.0.13
 
+<a name="todo" />
 ## TODO
 
 * Re-enable sending valid AT commands
@@ -338,11 +355,13 @@ Tested with RAK7200 3.1.0.13
   * configure LoRa DR - at+set_config=lora:dr:X
   * configure LoRa send_interval - at+set_config=lora:send_interval:X:Y
 
+<a name="issues" />
 ## Issues
 
 1. Trying to mask/unmask multiple channels seems intermittent, how long does it take?
 1. Both my devices go dead after a while, what's up with that?
 
+<a name="license" />
 ## LICENSE
 
 Copyright 2020 Jeffrey C Honig <jch@honig.net>
