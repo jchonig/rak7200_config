@@ -4,14 +4,14 @@ A tool to configure a [RAK7200](https://store.rakwireless.com/products/rak7200-l
 
 ## Contents
 
-[Introduction](#introduction)
-[Invocation](#invocation)
-[Commands](#commands)
-[OS Support](#os_support)
-[Supported Hardware](#supported_hardware)
-[TODO](#todo)
-[Issues](#issues)
-[License](#license)
+* [Introduction](#introduction)
+* [Invocation](#invocation)
+* [Commands](#commands)
+* [OS Support](#os_support)
+* [Supported Hardware](#supported_hardware)
+* [TODO](#todo)
+* [Issues](#issues)
+* [License](#license)
 
 <a name="introduction" />
 ## Introduction
