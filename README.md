@@ -37,6 +37,7 @@ Where:
 * --port specifies the serial port (system specific)
 
 <a name="commands" />
+
 ## Commands
 
 ### show
@@ -289,6 +290,7 @@ OTAA Join Start...
 ```
 
 <a name="os_support" />
+
 ## OS support
 
 ### macOS
@@ -339,11 +341,13 @@ It appears that `pyserial` is already installed.
 TBD
 
 <a name="supported_hardware" />
+
 ## Supported hardware
 
 Tested with RAK7200 3.1.0.13
 
 <a name="todo" />
+
 ## TODO
 
 * Re-enable sending valid AT commands
@@ -358,13 +362,15 @@ Tested with RAK7200 3.1.0.13
   * configure LoRa send_interval - at+set_config=lora:send_interval:X:Y
 
 <a name="issues" />
+
 ## Issues
 
 1. Trying to mask/unmask multiple channels seems intermittent, how long does it take?
 1. Both my devices go dead after a while, what's up with that?
 
 <a name="license" />
-## LICENSE
+
+## License
 
 Copyright 2020 Jeffrey C Honig <jch@honig.net>
 
